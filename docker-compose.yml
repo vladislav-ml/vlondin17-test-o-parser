@@ -1,0 +1,73 @@
+version: '3.9'
+services:
+    db:
+        image: mysql:8
+        restart: always
+        ports:
+          - 3306:3306
+        environment:
+          MYSQL_ROOT_PASSWORD: secret
+          MYSQL_DATABASE: django-test3
+          MYSQL_USER: root3
+          MYSQL_PASSWORD: secret
+        volumes:
+          - db_data:/var/lib/mysql/
+    web:
+        build: .
+        command: gunicorn sitemain.wsgi:application --bind 0.0.0.0:8000
+        volumes:
+          - .:/usr/src/app/
+          - static_volume:/app/static
+          - media_volume:/app/media
+        expose:
+          - 8000
+        env_file:
+          - ./.env.prod
+        depends_on:
+          - db
+    nginx:
+        build: ./nginx
+        volumes:
+          - static_volume:/app/static
+          - media_volume:/app/media
+        ports:
+          - 80:80
+        depends_on:
+          - web
+    redis_1:
+        image: redis
+        ports:
+          - 6379:6379
+        expose:
+          - 6379
+        volumes:
+          - /path/to/local/dаta:/root/redis
+          - /path/to/local/redis.conf:/usr/local/etc/redis/redis.conf
+        environment:
+          - REDIS_PORT=6379
+    celery_1:
+        build: .
+        environment:
+          - CELERY_BROKER_URL=redis://redis_1:6379
+          - CELERY_RESULT_BACKEND=redis://redis_1:6379
+        restart: always
+        volumes:
+          - .:/usr/src/app/
+        depends_on:
+          - db
+          - redis_1
+          - web
+        command:
+          celery -A sitemain worker
+          --loglevel INFO
+    mybot:
+        build: .
+        depends_on:
+          - db
+          - web
+        command: python3 tg_main.py
+        restart: on-failure
+volumes:
+    db_data:
+    static_volume:
+    media_volume:
